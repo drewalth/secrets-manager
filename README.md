@@ -168,4 +168,15 @@ MIT License - see LICENSE file for details.
 
 ## Security Notice
 
-This tool is designed for local development use only. Do not use it for production secrets or sensitive data that requires enterprise-grade security solutions.
+**This tool is designed for local development use only**. Do not use it for production secrets or sensitive data that requires enterprise-grade security solutions.
+
+The author is not a security expert. Use at your own risk. If you find a security vulnerability, please report it to the author via GitHub issues.
+
+The author, contributors, and maintainers are not responsible for any damage or loss caused by the use of this tool.
+
+If you're using this tool for commercial use, adhere to your company's security policies. You are responsible for your own security.
+If your company requires you to use a third-party secrets manager, use that instead.
+
+## Third-party Secrets Managers
+
+For production use, consider using a third-party secrets manager like [Vault](https://www.vaultproject.io/) or [AWS Secrets Manager](https://aws.amazon.com/secrets-manager/).
