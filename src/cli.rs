@@ -57,6 +57,9 @@ pub enum Commands {
         /// Output file (optional, defaults to stdout)
         #[arg(short, long)]
         output: Option<String>,
+        /// Force export (skip .gitignore check)
+        #[arg(short = 'F', long)]
+        force: bool,
     },
     /// Delete a project
     Delete {
@@ -142,8 +145,8 @@ impl SecretManager {
             Commands::Show { project_name } => {
                 self.show_project(&project_name)?;
             }
-            Commands::Export { project_name, format, output } => {
-                self.export_project(&project_name, &format, output)?;
+            Commands::Export { project_name, format, output, force } => {
+                self.export_project(&project_name, &format, output, force)?;
             }
             Commands::Delete { project_name } => {
                 self.delete_project(&project_name)?;
@@ -232,7 +235,7 @@ impl SecretManager {
         Ok(())
     }
     
-    fn export_project(&self, project_name: &str, format: &str, output: Option<String>) -> Result<()> {
+    fn export_project(&self, project_name: &str, format: &str, output: Option<String>, force: bool) -> Result<()> {
         let password = Self::get_password()?;
         let project = self.storage.load_project(project_name, &password)?;
         
@@ -248,7 +251,13 @@ impl SecretManager {
         match output {
             Some(file_path) => {
                 // Check .gitignore guardrail before writing file
-                self.check_gitignore_guardrail(&file_path)?;
+                if force {
+                    println!("⚠️  WARNING: Exporting to '{}' without checking .gitignore!", file_path);
+                    println!("   This may result in accidental commits.");
+                    println!();
+                } else {
+                    self.check_gitignore_guardrail(&file_path)?;
+                }
                 
                 std::fs::write(&file_path, content)?;
                 println!("✅ Exported to: {}", file_path);
