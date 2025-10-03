@@ -2,6 +2,8 @@ use clap::{Parser, Subcommand};
 use anyhow::Result;
 use rpassword::read_password;
 use std::io::{self, Write};
+use std::fs;
+use std::path::Path;
 
 use crate::models::{Project, ExportFormat};
 use crate::storage::SecretStorage;
@@ -60,6 +62,13 @@ pub enum Commands {
     Delete {
         /// Name of the project
         project_name: String,
+    },
+    /// Import secrets from a .env file
+    Import {
+        /// Name of the project
+        project_name: String,
+        /// Path to the .env file
+        env_file: String,
     },
 }
 
@@ -138,6 +147,9 @@ impl SecretManager {
             }
             Commands::Delete { project_name } => {
                 self.delete_project(&project_name)?;
+            }
+            Commands::Import { project_name, env_file } => {
+                self.import_project(&project_name, &env_file)?;
             }
         }
         Ok(())
@@ -267,6 +279,101 @@ impl SecretManager {
         }
     }
     
+    fn import_project(&self, project_name: &str, env_file: &str) -> Result<()> {
+        // Check if the .env file exists
+        if !Path::new(env_file).exists() {
+            return Err(anyhow::anyhow!("File '{}' not found", env_file));
+        }
+
+        // Load the project
+        let password = Self::get_password()?;
+        let mut project = self.storage.load_project(project_name, &password)?;
+
+        // Parse the .env file
+        let env_content = fs::read_to_string(env_file)?;
+        let env_vars = self.parse_env_file(&env_content)?;
+
+        if env_vars.is_empty() {
+            println!("No environment variables found in '{}'", env_file);
+            return Ok(());
+        }
+
+        println!("Found {} environment variables in '{}'", env_vars.len(), env_file);
+        
+        let mut imported_count = 0;
+        let mut skipped_count = 0;
+
+        for (key, value) in env_vars {
+            if project.get_secret(&key).is_some() {
+                // Key already exists, prompt for confirmation
+                print!("Key '{}' already exists. Overwrite? (y/N): ", key);
+                io::stdout().flush()?;
+                
+                let mut confirmation = String::new();
+                io::stdin().read_line(&mut confirmation)?;
+                
+                if confirmation.trim().to_lowercase() == "y" || confirmation.trim().to_lowercase() == "yes" {
+                    project.add_secret(key.clone(), value);
+                    imported_count += 1;
+                    println!("✅ Imported '{}'", key);
+                } else {
+                    skipped_count += 1;
+                    println!("⏭️  Skipped '{}'", key);
+                }
+            } else {
+                // Key doesn't exist, add it directly
+                project.add_secret(key.clone(), value);
+                imported_count += 1;
+                println!("✅ Imported '{}'", key);
+            }
+        }
+
+        // Save the updated project
+        self.storage.save_project(&project, &password)?;
+
+        println!();
+        println!("📊 Import Summary:");
+        println!("  • Imported: {}", imported_count);
+        println!("  • Skipped: {}", skipped_count);
+        println!("  • Total processed: {}", imported_count + skipped_count);
+
+        Ok(())
+    }
+
+    /// Parses a .env file content and returns a HashMap of key-value pairs
+    fn parse_env_file(&self, content: &str) -> Result<std::collections::HashMap<String, String>> {
+        let mut env_vars = std::collections::HashMap::new();
+        
+        for line in content.lines() {
+            let line = line.trim();
+            
+            // Skip empty lines and comments
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            
+            // Find the first '=' character
+            if let Some(equal_pos) = line.find('=') {
+                let key = line[..equal_pos].trim().to_string();
+                let value = line[equal_pos + 1..].trim().to_string();
+                
+                // Remove quotes if present
+                let value = if (value.starts_with('"') && value.ends_with('"')) || 
+                              (value.starts_with('\'') && value.ends_with('\'')) {
+                    value[1..value.len()-1].to_string()
+                } else {
+                    value
+                };
+                
+                if !key.is_empty() {
+                    env_vars.insert(key, value);
+                }
+            }
+        }
+        
+        Ok(env_vars)
+    }
+
     fn delete_project(&self, project_name: &str) -> Result<()> {
         if !self.storage.project_exists(project_name) {
             return Err(anyhow::anyhow!("Project '{}' not found", project_name));
