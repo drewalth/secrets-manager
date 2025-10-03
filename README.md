@@ -28,6 +28,11 @@ sudo cp target/release/secrets-manager /usr/local/bin/
 
 ## Usage
 
+> Tip: for brevity, create an alias for the secrets-manager command. In your `.bashrc` or `.zshrc` file, add:
+> ```bash
+> alias secrets="secrets-manager"
+> ```
+
 ### Create a New Project
 
 ```bash
