@@ -247,6 +247,9 @@ impl SecretManager {
         
         match output {
             Some(file_path) => {
+                // Check .gitignore guardrail before writing file
+                self.check_gitignore_guardrail(&file_path)?;
+                
                 std::fs::write(&file_path, content)?;
                 println!("✅ Exported to: {}", file_path);
             }
@@ -392,5 +395,141 @@ impl SecretManager {
             println!("❌ Deletion cancelled");
         }
         Ok(())
+    }
+
+    /// Checks if the output file is properly ignored by .gitignore to prevent accidental commits
+    fn check_gitignore_guardrail(&self, file_path: &str) -> Result<()> {
+        let gitignore_path = ".gitignore";
+        
+        // Check if .gitignore exists
+        if !Path::new(gitignore_path).exists() {
+            println!("⚠️  WARNING: No .gitignore file found in current directory!");
+            println!("   Exporting secrets to '{}' may result in accidental commits.", file_path);
+            println!("   Consider creating a .gitignore file and adding this file pattern.");
+            println!();
+            
+            print!("Do you want to continue with the export? (y/N): ");
+            io::stdout().flush()?;
+            
+            let mut confirmation = String::new();
+            io::stdin().read_line(&mut confirmation)?;
+            
+            if confirmation.trim().to_lowercase() != "y" && confirmation.trim().to_lowercase() != "yes" {
+                return Err(anyhow::anyhow!("Export cancelled by user"));
+            }
+            return Ok(());
+        }
+        
+        // Read and parse .gitignore
+        let gitignore_content = match fs::read_to_string(gitignore_path) {
+            Ok(content) => content,
+            Err(_) => {
+                println!("⚠️  WARNING: Could not read .gitignore file!");
+                return self.prompt_for_unsafe_export(file_path);
+            }
+        };
+        
+        // Check if the file is ignored
+        if !self.is_file_ignored(file_path, &gitignore_content) {
+            println!("⚠️  WARNING: '{}' is not listed in .gitignore!", file_path);
+            println!("   This file may be accidentally committed to version control.");
+            println!("   Consider adding this file pattern to your .gitignore file.");
+            println!();
+            
+            return self.prompt_for_unsafe_export(file_path);
+        }
+        
+        // File is properly ignored, safe to proceed
+        Ok(())
+    }
+    
+    /// Prompts user for confirmation when exporting to an unsafe location
+    fn prompt_for_unsafe_export(&self, _file_path: &str) -> Result<()> {
+        print!("Do you want to continue with the export? (y/N): ");
+        io::stdout().flush()?;
+        
+        let mut confirmation = String::new();
+        io::stdin().read_line(&mut confirmation)?;
+        
+        if confirmation.trim().to_lowercase() != "y" && confirmation.trim().to_lowercase() != "yes" {
+            return Err(anyhow::anyhow!("Export cancelled by user"));
+        }
+        
+        Ok(())
+    }
+    
+    /// Checks if a file path matches any pattern in .gitignore
+    fn is_file_ignored(&self, file_path: &str, gitignore_content: &str) -> bool {
+        let file_path = file_path.trim_start_matches("./");
+        
+        for line in gitignore_content.lines() {
+            let pattern = line.trim();
+            
+            // Skip empty lines and comments
+            if pattern.is_empty() || pattern.starts_with('#') {
+                continue;
+            }
+            
+            // Handle directory patterns (ending with /)
+            if pattern.ends_with('/') {
+                let dir_pattern = &pattern[..pattern.len() - 1];
+                if file_path.starts_with(dir_pattern) {
+                    return true;
+                }
+            }
+            
+            // Handle exact matches
+            if pattern == file_path {
+                return true;
+            }
+            
+            // Handle wildcard patterns
+            if self.matches_wildcard_pattern(file_path, pattern) {
+                return true;
+            }
+            
+            // Handle patterns that match any file with that name
+            if pattern.starts_with('*') && file_path.ends_with(&pattern[1..]) {
+                return true;
+            }
+        }
+        
+        false
+    }
+    
+    /// Simple wildcard pattern matching (supports * and ?)
+    fn matches_wildcard_pattern(&self, text: &str, pattern: &str) -> bool {
+        // Convert glob pattern to a simple regex-like matching
+        let pattern_chars: Vec<char> = pattern.chars().collect();
+        let text_chars: Vec<char> = text.chars().collect();
+        
+        self.wildcard_match(&text_chars, &pattern_chars, 0, 0)
+    }
+    
+    /// Recursive wildcard matching helper
+    fn wildcard_match(&self, text: &[char], pattern: &[char], text_idx: usize, pattern_idx: usize) -> bool {
+        if pattern_idx == pattern.len() {
+            return text_idx == text.len();
+        }
+        
+        if text_idx == text.len() {
+            return pattern[pattern_idx..].iter().all(|&c| c == '*');
+        }
+        
+        match pattern[pattern_idx] {
+            '*' => {
+                // Try matching 0 or more characters
+                self.wildcard_match(text, pattern, text_idx, pattern_idx + 1) ||
+                self.wildcard_match(text, pattern, text_idx + 1, pattern_idx)
+            }
+            '?' => {
+                // Match any single character
+                self.wildcard_match(text, pattern, text_idx + 1, pattern_idx + 1)
+            }
+            c => {
+                // Match exact character
+                text[text_idx] == c && self.wildcard_match(text, pattern, text_idx + 1, pattern_idx + 1)
+            }
+        }
     }
 }
