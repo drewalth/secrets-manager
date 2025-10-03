@@ -1,0 +1,6 @@
+/target
+.env
+.env.example
+.json
+example.env
+example.json
