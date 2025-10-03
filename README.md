@@ -22,8 +22,7 @@ Managing secrets for development environments can be a pain. This tool is design
 ```bash
 git clone https://github.com/drewalth/secrets-manager.git
 cd secrets-manager
-cargo build --release
-sudo cp target/release/secrets-manager /usr/local/bin/
+make install
 ```
 
 ## Usage
@@ -31,6 +30,10 @@ sudo cp target/release/secrets-manager /usr/local/bin/
 > Tip: for brevity, create an alias for the secrets-manager command. In your `.bashrc` or `.zshrc` file, add:
 > ```bash
 > alias secrets="secrets-manager"
+> ```
+> or
+> ```bash
+> make create-alias
 > ```
 
 ### Create a New Project
@@ -55,6 +58,12 @@ secrets-manager add my-project API_KEY
 
 # Add a secret with value
 secrets-manager add my-project DATABASE_URL "postgres://localhost:5432/mydb"
+```
+
+### Import Secrets from a .env file
+
+```bash
+secrets-manager import my-project .env
 ```
 
 ### View Project Secrets
